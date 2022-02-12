@@ -313,3 +313,250 @@ const App: () => Node = () => {
 };
 export default App;
 ```
+
+## IOS 카운터 만들기
+
+### 클래스 만들기
+
+IOS 에서 사용하는 UI프레임워크인 CoCoa Touch Class 로 CounterView 파일 생성
+
+`ios/CounterView.swift`
+```swift
+import UIKit
+
+class CounterView: UIView {
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    setupView()
+  }
+  
+  required init?(coder aDecoder: NSCoder) {
+    super.init(coder: aDecoder)
+    setupView()
+  }
+  
+  private func setupView() {
+    // 임시로 배경색 변경
+    self.backgroundColor = .blue
+    // Todo UI 설정
+  }
+}
+```
+
+### Manager 클래스 만들기
+
+- Swift File 로 CounterManager 파일 생성
+- Object-C로 만들어진 RCTViewManager를 Swift 코드에서 사용하기 위해 NativeCounter-Bridging-Header.h파일 수정
+
+`ios/NativeCounter-Bridging-Header.h`
+```h
+#import <React/RCTBundleURLProvider.h>
+#import <React/RCTRootView.h>
+#import <React/RCTComponent.h>
+#import <React/RCTBridgeModule.h>
+#import <React/RCTViewManager.h>
+#import <React/RCTDevLoadingView.h>
+```
+
+`ios/CounterManager.swift`
+```swift
+@objc (CounterManager)
+class CounterManager: RCTViewManager {
+ 
+  override static func requiresMainQueueSetup() -> Bool {
+    return true
+  }
+ 
+  override func view() -> UIView! {
+    return CounterView()
+  }
+ 
+}
+```
+
+해당 파일을 만든 후 Objective-C 애서 호환되도록 Objective-C 버전의 CounterManager를 만든다
+
+`ios/CounterManager.m`
+```m
+#import <React/RCTViewManager.h>
+ 
+@interface RCT_EXTERN_MODULE(CounterManager, RCTViewManager)
+
+@end
+```
+
+- CounterManager에서 Manager 앞부분이 이름으로 결정된
+
+### 텍스트와 버튼 보여주기
+
+`ios/CounterView.swift`
+```swift
+import UIKit
+
+class CounterView: UIView {
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    setupView()
+  }
+
+  required init?(coder aDecoder: NSCoder) {
+    super.init(coder: aDecoder)
+    setupView()
+  }
+
+  private func setupView() {
+    self.addSubview(valueLabel)
+    self.addSubview(buttonsView)
+
+    // buttonsView 위치 설정
+    buttonsView.leadingAnchor.constraint(equalTo: self.leadingAnchor, constant: 8)
+      .isActive = true
+    buttonsView.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -8)
+      .isActive = true
+    buttonsView.heightAnchor.constraint(equalToConstant: 48)
+      .isActive = true
+    buttonsView.bottomAnchor.constraint(equalTo: self.bottomAnchor, constant: -8)
+      .isActive = true
+
+    // buttonView에 버튼 추가
+    buttonsView.addArrangedSubview(leftButton)
+    buttonsView.addArrangedSubview(rightButton)
+  }
+
+  let valueLabel: UILabel = {
+      let label = UILabel()
+      label.text = "0"
+      label.textAlignment = .center
+      label.font = label.font.withSize(36)
+      // 화면을 꽉 채우기
+      label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      return label
+    }()
+
+    let buttonsView: UIStackView = {
+      let view = UIStackView()
+      view.axis = .horizontal
+      view.distribution = .fillEqually
+      view.spacing = 8
+      view.alignment = .fill
+      view.translatesAutoresizingMaskIntoConstraints = false
+      return view
+    }()
+
+    let leftButton: UIButton = {
+      let button = UIButton()
+      button.setTitleColor(.black, for: .normal)
+      button.setTitleColor(.gray, for: .highlighted)
+      button.setTitle("Button", for: .normal)
+
+      return button
+    }()
+
+    let rightButton: UIButton = {
+      let button = UIButton()
+      button.setTitleColor(.black, for: .normal)
+      button.setTitleColor(.gray, for: .highlighted)
+      button.setTitle("Button", for: .normal)
+
+      return button
+    }()
+}
+```
+
+- addSubView로 UI 인스턴스를 추가한다
+- UIStackView를 설정하여 원하는 방식으로 UI를 나열해 줄 수 있고 이 기능을 활성화 하려면 addArrangedSubview로 추가해야한다
+
+### Props 연동하기
+
+`ios/CounterManager.m`
+```m
+#import <React/RCTViewManager.h>
+ 
+@interface RCT_EXTERN_MODULE(CounterManager, RCTViewManager)
+
+RCT_EXPORT_VIEW_PROPERTY(value, NSNumber)
+RCT_EXPORT_VIEW_PROPERTY(leftButtonText, NSString)
+RCT_EXPORT_VIEW_PROPERTY(rightButtonText, NSString)
+
+@end
+```
+
+- Props을 연동할때는 RCT_EXPORT_VIEW_PROPERTY 를 사용한다
+- 첫번째 인자는 연동할 이름이고 두번째는 타입이다
+- 자바스크립트 단에서 넘긴 Props을 받아오기 위해 CounterView에 set<Props 이름> 의 메서드를 구현한다
+
+`ios/CounterView.swift`
+```swift
+@objc func setValue(_ val: NSNumber) {
+    valueLabel.text = val.stringValue
+}
+
+@objc func setLeftButtonText(_ val: NSString) {
+    leftButton.setTitle(val as String, for: .normal)
+}
+
+@objc func setRightButtonText(_ val: NSString) {
+    rightButton.setTitle(val as String, for: .normal)
+}
+```
+
+### 이벤트 설정하기
+
+```m
+#import <React/RCTViewManager.h>
+
+@interface RCT_EXTERN_MODULE(CounterManager, RCTViewManager)
+
+RCT_EXPORT_VIEW_PROPERTY(onPressLeftButton, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPressRightButton, RCTDirectEventBlock)
+
+@end
+```
+
+- 이제 CounterView에서 onPressLeftButton와 onPressRightButton를 멤버변수로 선언한다
+
+`ios/NativeCounter-Bridging-Header.h`
+```h
+#import "React/RCTEventEmitter.h"
+```
+
+`ios/CounterView.swift`
+```swift
+@objc var onPressLeftButton: RCTDirectEventBlock?
+@objc var onPressRightButton: RCTDirectEventBlock?
+
+@objc func pressLeftButton(sender: UIButton) {
+if onPressLeftButton == nil {
+  return
+}
+let event = [AnyHashable: Any]()
+onPressLeftButton!(event)
+}
+
+@objc func pressRightButton(sender: UIButton) {
+if onPressRightButton == nil {
+  return
+}
+let event = ["message": "hello world"]
+// JS에서의 결과: { message: 'hello world' }
+onPressRightButton!(event)
+}
+
+private func setupEvents() {
+let leftButtonTap = UITapGestureRecognizer(
+  target: self,
+  action: #selector(pressLeftButton)
+)
+leftButton.addGestureRecognizer(leftButtonTap)
+
+let rightButtonTap = UITapGestureRecognizer(
+  target: self,
+  action: #selector(pressRightButton)
+)
+rightButton.addGestureRecognizer(rightButtonTap)
+}
+```
+
+- onPressLeftButton과 onPressRightButton을 선언할때 ?는 초기값 없이 선언한다는 의미
+- 버튼과 연동되는 작업은 setupEvents에서 이뤄진고 setupView 메서드내에서 호출
+
